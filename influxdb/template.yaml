@@ -1,0 +1,45 @@
+# influxdb/template.yaml
+apiVersion: influxdata.com/v2alpha1
+kind: Bucket
+metadata:
+  name: invernadero
+spec:
+  description: "Bucket para datos de sensores del invernadero."
+  # Puedes ajustar la retención aquí, por ejemplo:
+  # retention: 30d # Retención de 30 días
+  # retention: 0s # Retención infinita (predeterminado si no se especifica)
+
+---
+apiVersion: influxdata.com/v2alpha1
+kind: MeasurementSchema
+metadata:
+  name: sensor_data # Un nombre genérico para tus mediciones de sensores
+  bucket: invernadero
+spec:
+  description: "Datos de diversos sensores ambientales en el invernadero."
+  tags:
+    - name: domain
+      type: string
+      description: "Tipo de sensor o dominio al que pertenece."
+    - name: entity_id
+      type: string
+      description: "Identificador único de la entidad del sensor."
+    - name: friendly_name
+      type: string
+      description: "Nombre amigable o descriptivo del sensor."
+    - name: unit
+      type: string
+      description: "Unidad de medida del valor del campo."
+  fields:
+    - name: temperature_celsius
+      type: float
+      description: "Temperatura ambiente en grados Celsius."
+    - name: humidity_percent
+      type: float
+      description: "Humedad ambiente en porcentaje."
+    - name: pressure_hpa
+      type: float
+      description: "Presión atmosférica en hectopascales."
+    - name: luminosity_lx
+      type: float
+      description: "Luminosidad en lux."
