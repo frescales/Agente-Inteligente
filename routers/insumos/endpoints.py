@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Query
 from supabase import create_client
+from services.supabase_connector import obtener_consumo_por_insumo
 from os import getenv
+from datetime import date
 from dotenv import load_dotenv
 from .schema import (
     InsumosAplicadosResponse,
@@ -119,3 +121,13 @@ def efectividad_insumos(ubicacion_id: str, fecha_inicio: date, fecha_fin: date):
     } for i, v in acumulado.items()]
 
     return {"efectividad": respuesta}
+
+
+########CONSUMO AGRUPADO POR INSUMO############
+
+@router.get("/consumo/rango")
+def consumo_insumos_rango(
+    fecha_inicio: date = Query(...),
+    fecha_fin: date = Query(...)
+):
+    return obtener_consumo_por_insumo(fecha_inicio, fecha_fin)

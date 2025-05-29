@@ -56,3 +56,97 @@ def obtener_total_producido(
         total = sum(row["cantidad"] for row in data)
         unidad = data[0]["unidad_id"] if data else "kg"
         return {"total_kg": total, "unidad": unidad}
+
+
+#####CONECTOR GASTOS TOTALE##########
+
+def obtener_costo_insumos(
+    fecha_inicio: date,
+    fecha_fin: date,
+    invernadero_id: str = None
+):
+    # 1. Obtener todas las aplicaciones dentro del rango de fechas
+    aplicaciones_query = supabase.table("insumos_aplicados") \
+        .select("id") \
+        .gte("fecha", str(fecha_inicio)) \
+        .lte("fecha", str(fecha_fin))
+
+    if invernadero_id:
+        aplicaciones_query = aplicaciones_query.eq("ubicacion_id", invernadero_id)
+
+    aplicaciones = aplicaciones_query.execute().data
+    if not aplicaciones:
+        return {"total_usd": 0.0, "registros": 0}
+
+    # 2. Obtener los IDs de esas aplicaciones
+    aplicacion_ids = [row["id"] for row in aplicaciones]
+
+    # 3. Buscar todos los detalles vinculados
+    detalles_query = supabase.table("detalle_insumos_aplicados") \
+        .select("costo_total") \
+        .in_("aplicacion_id", aplicacion_ids)
+
+    detalles = detalles_query.execute().data
+    total_usd = sum(item.get("costo_total", 0) for item in detalles)
+
+    return {
+        "total_usd": round(total_usd, 2),
+        "registros": len(detalles),
+        "aplicaciones_consultadas": len(aplicacion_ids)
+    }
+
+
+
+#####CONNECTOR INSUMOS POR MES USADOS##########
+
+def obtener_consumo_por_insumo(fecha_inicio: date, fecha_fin: date) -> list:
+    """
+    Retorna el consumo total por insumo entre dos fechas.
+    Se une detalle_insumos_aplicados con insumos y unidades para obtener nombre y unidad.
+    """
+    # 1. Obtener todas las aplicaciones en rango
+    aplicaciones = supabase.table("insumos_aplicados") \
+        .select("id") \
+        .gte("fecha", str(fecha_inicio)) \
+        .lte("fecha", str(fecha_fin)) \
+        .execute().data
+
+    if not aplicaciones:
+        return []
+
+    aplicacion_ids = [a["id"] for a in aplicaciones]
+
+    # 2. Obtener los detalles asociados
+    detalles = supabase.table("detalle_insumos_aplicados") \
+        .select("insumo_id, cantidad") \
+        .in_("aplicacion_id", aplicacion_ids) \
+        .execute().data
+
+    if not detalles:
+        return []
+
+    # 3. Agrupar por insumo
+    consumo_por_insumo = {}
+    for d in detalles:
+        insumo_id = d["insumo_id"]
+        cantidad = d.get("cantidad", 0)
+        consumo_por_insumo[insumo_id] = consumo_por_insumo.get(insumo_id, 0) + cantidad
+
+    # 4. Obtener nombres y unidades desde tabla insumos
+    insumos_data = supabase.table("insumos").select("id, nombre, unidad_id").execute().data
+    unidades_data = supabase.table("unidades").select("id, nombre").execute().data
+    unidades_dict = {u["id"]: u["nombre"] for u in unidades_data}
+
+    respuesta = []
+    for insumo in insumos_data:
+        iid = insumo["id"]
+        if iid in consumo_por_insumo:
+            respuesta.append({
+                "insumo_id": iid,
+                "nombre": insumo["nombre"],
+                "unidad": unidades_dict.get(insumo["unidad_id"], "N/A"),
+                "consumo_total": round(consumo_por_insumo[iid], 2)
+            })
+
+    return respuesta
+

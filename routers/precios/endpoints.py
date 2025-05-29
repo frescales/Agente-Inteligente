@@ -1,5 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from supabase import create_client
+from fastapi import APIRouter, Query
+from typing import Optional
+from datetime import date
+from services.supabase_connector import obtener_costo_insumos
 import os
 from dotenv import load_dotenv
 
@@ -30,3 +34,26 @@ def get_precio(insumo_id: str, fecha: str):
         raise HTTPException(status_code=404, detail="Precio no encontrado")
 
     return precios_validos[0]
+
+
+########COSTOS HISTORICOS TOTALES####
+
+@router.get("/costo-insumos/rango")
+def costo_insumos_rango(
+    fecha_inicio: date = Query(...),
+    fecha_fin: date = Query(...),
+    invernadero_id: str = Query(None)
+):
+    return obtener_costo_insumos(fecha_inicio, fecha_fin, invernadero_id)
+
+####### COSTOS HISTORICOS POR INVERNADERO######
+
+@router.get("/gastos/por-invernadero")
+def gastos_por_invernadero(
+    fecha_inicio: date = Query(...),
+    fecha_fin: date = Query(...)
+):
+    return obtener_gastos_por_invernadero(
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin
+    )

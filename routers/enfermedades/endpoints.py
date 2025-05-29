@@ -67,59 +67,53 @@ def get_enfermedades_registradas(
 
     return {"registros": respuesta}
 
-@router.get("/patrones-clima", response_model=EnfermedadClimaComparacionResponse)
-def patrones_clima(ubicacion_id: str, fecha_inicio: date, fecha_fin: date):
-    # 1. Obtener enfermedades detectadas
-    enfermedades = supabase.table("enfermedades_detectadas") \
-        .select("id, fecha, ubicacion_id") \
-        .eq("ubicacion_id", ubicacion_id) \
-        .gte("fecha", fecha_inicio) \
-        .lte("fecha", fecha_fin) \
+################# HISTORICO DE ENFERMEDADES DETECTADAS##########
+
+@router.get("/enfermedades/historico")
+def enfermedades_historicas(mes: int = Query(..., ge=1, le=12), año: int = Query(..., ge=2020, le=2100)):
+    """
+    Retorna las enfermedades detectadas en un mes y año específico,
+    junto con su descripción y tratamiento desde el catálogo.
+    """
+    # Rango de fechas del mes
+    fecha_inicio = date(año, mes, 1)
+    if mes == 12:
+        fecha_fin = date(año + 1, 1, 1)
+    else:
+        fecha_fin = date(año, mes + 1, 1)
+
+    # Consulta enfermedades detectadas en el rango
+    detectadas = supabase.table("enfermedades_detectadas") \
+        .select("*") \
+        .gte("fecha", str(fecha_inicio)) \
+        .lt("fecha", str(fecha_fin)) \
         .execute().data
 
-    fechas_con_enfermedad = {e["fecha"] for e in enfermedades}
+    if not detectadas:
+        return {"total": 0, "enfermedades": []}
 
-    # 2. Preparar consulta a InfluxDB para sensores ambientales
-    sensores = {
-        "temperatura": "sensor.ambiente_temperatura_ambiente",
-        "humedad": "sensor.ambiente_humedad_ambiente",
-        "presion": "sensor.ambiente_presi_n_atmosf_rica",
-        "lluvia": "binary_sensor.ambiente_sensor_lluvia",
-        "luminosidad": "sensor.luminosidad_inv1"
-    }
+    # Extraer IDs únicos detectados
+    ids_enfermedades = list(set(d["enfermedad_id"] for d in detectadas))
 
-    resultados: Dict[str, Dict[str, List[float]]] = {s: {"con": [], "sin": []} for s in sensores}
+    # Consultar catálogo
+    catalogo = supabase.table("catalogo_enfermedades") \
+        .select("*") \
+        .in_("id", ids_enfermedades) \
+        .execute().data
 
-    for sensor_nombre, entity_id in sensores.items():
-        query = f'''
-        from(bucket: "invernadero")
-          |> range(start: {fecha_inicio}T00:00:00Z, stop: {fecha_fin + timedelta(days=1)}T00:00:00Z)
-          |> filter(fn: (r) => r._measurement == "state" and r.entity_id == "{entity_id}")
-          |> aggregateWindow(every: 1d, fn: mean)
-          |> yield(name: "mean")
-        '''
+    catalogo_map = {item["id"]: item for item in catalogo}
 
-        data = query_influx(query)
-        for d in data:
-            fecha = d["_time"][:10]
-            valor = d["_value"]
-            if valor is None:
-                continue
-            if fecha in fechas_con_enfermedad:
-                resultados[sensor_nombre]["con"].append(valor)
-            else:
-                resultados[sensor_nombre]["sin"].append(valor)
+    # Armar respuesta
+    resultado = []
+    for enf_id in ids_enfermedades:
+        match = catalogo_map.get(enf_id)
+        if match:
+            resultado.append({
+                "id": enf_id,
+                "nombre": match.get("nombre"),
+                "descripcion": match.get("descripcion"),
+                "tratamiento": match.get("tratamiento"),
+                "casos": sum(1 for d in detectadas if d["enfermedad_id"] == enf_id)
+            })
 
-    # 3. Calcular promedios
-    def promedio(lista):
-        return round(sum(lista) / len(lista), 2) if lista else None
-
-    comparaciones = []
-    for sensor, valores in resultados.items():
-        comparaciones.append({
-            "sensor": sensor,
-            "promedio_con_enfermedad": promedio(valores["con"]),
-            "promedio_sin_enfermedad": promedio(valores["sin"])
-        })
-
-    return {"comparaciones": comparaciones}
+    return {"total": len(resultado), "enfermedades": resultado}
