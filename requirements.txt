@@ -5,4 +5,5 @@ python-dotenv
 influxdb-client
 requests
 influxdb3-python
+pandas
 
