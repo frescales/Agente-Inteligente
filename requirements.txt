@@ -4,3 +4,4 @@ supabase
 python-dotenv
 influxdb-client
 requests
+influxdb-client-3
